@@ -517,6 +517,40 @@ Not a later pass. A component that fails these is not finished:
   progress view and a connected one shows a checkmark, which also satisfies
   `accessibilityDifferentiateWithoutColor`.
 
+### D16. There is no Supabase SDK; one endpoint is called directly and the rest goes through our server
+
+Resolves X1. `supabase-swift` is **not** adopted. The dependency count stays at
+zero.
+
+What made this a decision rather than a coin flip is the published contract. The
+server already owns the parts a client library would have earned its place on:
+
+| Need                        | Where it goes                                    |
+|-----------------------------|--------------------------------------------------|
+| Email/password sign-in      | `POST /api/auth/sign-in`   — our server           |
+| Registration                | `POST /api/auth/sign-up`   — our server           |
+| Refreshing an expired token | `POST /api/auth/refresh`   — our server           |
+| Apple/Google identity token | `POST {SUPABASE_URL}/auth/v1/token?grant_type=id_token` |
+
+Only the last row talks to Supabase, and it is one `URLSession` call carrying the
+provider, the identity token, and `data.full_name` when Apple supplies it (D7).
+Session persistence is the Keychain work in 7.1/7.2 either way — a library would
+have arrived with its own session store to keep in step with ours, which is a cost
+rather than a saving.
+
+The app therefore needs `SUPABASE_URL` and the Supabase **anon** key in its
+configuration. The anon key is a publishable identifier, not a credential, so this
+does not violate 15.2 — but it belongs in a configuration file rather than
+inlined in a call site, and no service-role key ever ships.
+
+The direct call is the one place `BudjAPI`'s rules do not apply: it carries no
+`Authorization` header and no `X-Client-Build`, because it is not our server. It
+lives in `Core/Session/` rather than `Core/Networking/` so that separation is
+visible in the tree.
+
+Revisit if Google is chosen natively (X3) and the OAuth dance turns out to want
+more of GoTrue than one endpoint.
+
 ## Risks / Trade-offs
 
 **The two silent failures.** Sending Apple's identity token where the
@@ -568,12 +602,10 @@ them change meaningfully:
 
 ## Open Questions
 
-1. **The Supabase Swift client is a third-party dependency**, and this project's
-   rules require asking before adding one. `signInWithIdToken` against GoTrue is
-   a small amount of plain HTTP, so hand-rolling is viable and keeps the
-   dependency count at zero — but token refresh, expiry handling and session
-   persistence are exactly the fiddly parts a client library gets right. Blocking
-   for the identity tasks; nothing else depends on it.
+1. ~~**The Supabase Swift client is a third-party dependency.**~~ **Answered — see
+   D16.** Hand-rolled. Refresh, password sign-in and registration all have server
+   routes already, so the only call left to Supabase is a single id-token
+   exchange, and the session store was ours to write regardless.
 2. **How does the app learn the Akahu redirect completed?** The server owns the
    redirect URI and performs the code exchange, but neither the server's
    `bank-connections` spec nor its design says what the server redirects *to*

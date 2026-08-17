@@ -1,8 +1,9 @@
 ## 1. Unblock
 
-- [ ] 1.1 Decide the Supabase client question (X1): adopt `supabase-swift` or
-      hand-roll the GoTrue calls. Blocks section 10 only. Record the answer in
-      `design.md` either way — "we chose not to" is worth as much as "we chose to".
+- [x] 1.1 ~~Decide the Supabase client question (X1).~~ **Done.** Hand-rolled, no
+      SDK — recorded as D16. The contract settled it: `/api/auth/sign-in`,
+      `/api/auth/sign-up` and `/api/auth/refresh` are all server routes, leaving
+      one direct call to `/auth/v1/token?grant_type=id_token`.
 - [ ] 1.2 Agree the Akahu callback mechanism with `add-onboarding` (X2): what the
       server redirects to after the code exchange, and what the app registers to
       receive it. Blocks 12.2. **This is a gap in the server change too** — record
@@ -14,22 +15,28 @@
 
 ## 2. Restructure and foundations
 
-- [ ] 2.1 Create the folder tree from D1 and move the six existing files into it.
-      No `project.pbxproj` edit is needed — `Budj/` is a synchronised root group.
-      Build to confirm that is actually true before relying on it further.
-- [ ] 2.2 Delete `ContentView.swift`. It is a placeholder whose name means
-      nothing; `Features/Placeholder/` replaces it.
-- [ ] 2.3 Correct `CLAUDE.md`: new sources are picked up automatically, not
-      registered by hand.
+- [x] 2.1 ~~Create the folder tree from D1 and move the six existing files.~~
+      **Done.** Confirmed by building: `Budj/` is a synchronised root group and
+      picked up the new tree with no `project.pbxproj` edit.
+- [x] 2.2 ~~Delete `ContentView.swift`.~~ **Done.** `Features/Placeholder/
+      PlaceholderView.swift` replaces it, and `RootView` holds that instead.
+- [x] 2.3 ~~Correct `CLAUDE.md`.~~ **Done.** It now records the synchronised
+      groups, the isolation rule 2.5 turned up, the `BUDJ_API_BASE_URL` setting,
+      and the no-dependency decision from D16.
 - [x] 2.4 ~~Replace `CLAUDE.md`'s design-prototype section.~~ **Done.** The
       prototype and its generated design kit are out of date and are no longer
       cited anywhere: `CLAUDE.md` now points at the `budj-specs` store for
       behaviour and carries D4's visual rules directly. The stale rule model
       (a formula over `x`) went with it — `add-rule-allocation` replaced it with
       an ordered step list.
-- [ ] 2.5 Confirm `SWIFT_VERSION` and the default-MainActor settings behave as
-      `CLAUDE.md` claims, by writing one unannotated `@Observable` class and
-      seeing it compile without `@MainActor`.
+- [x] 2.5 ~~Confirm the default-MainActor settings behave as claimed.~~
+      **Done, and it turned up something.** `-default-isolation MainActor` is
+      genuinely applied, and it isolates *conformances* as well as types: an
+      unannotated `struct` got a main-actor-isolated `Equatable`, warned about
+      today and an error in the Swift 6 language mode. The wire types are
+      therefore declared `nonisolated`. Note `SWIFT_VERSION` is still 5.0, so
+      these are warnings rather than errors for now. The test target does not
+      set the flag at all — test suites are annotated `@MainActor` instead.
 
 ## 3. Design system: tokens
 
@@ -86,17 +93,24 @@ every state.
 
 ## 6. Core: networking
 
-- [ ] 6.1 `ClientBuild` — reads the bundle build number; one value, no hand-written
-      constant.
-- [ ] 6.2 `BudjAPI` — one type, applies authorization and the build identifier to
-      every request. There must be no way to construct a request without them.
-- [ ] 6.3 `APIError` — the enum from D12, decoding the server's error codes into
-      distinct cases and degrading unknown codes to a general server failure.
-- [ ] 6.4 Central handling for `unsupportedClient`, `subscriptionRequired`, and
-      `unauthorized`, applied once rather than at each call site.
+- [x] 6.1 ~~`ClientBuild`.~~ **Done.** Reads `CFBundleVersion` through an
+      `InfoValues` seam, so a test can assert the real bundle's value parses —
+      a `CFBundleVersion` of `1.0` would have every request refused.
+- [x] 6.2 ~~`BudjAPI`.~~ **Done.** One request builder, so neither header has a
+      per-call opportunity to be omitted. Includes the coalesced single-retry
+      refresh: a network failure during refresh keeps the session, a refusal
+      ends it. The base address comes from `BUDJ_API_BASE_URL`.
+- [x] 6.3 ~~`APIError`.~~ **Done.** Codes are matched exactly, including case;
+      a lowercase `subscription_required` degrades to a server failure rather
+      than quietly sending someone to the paywall.
+- [x] 6.4 ~~Central handling.~~ **Mechanism done** — `APIInterruption` and one
+      `interruptionHandler` on the client, covered by tests. Wiring it to the
+      screens it implies belongs to 8.3 and 9.x, which is where the screens are.
 - [ ] 6.5 `Money` — integer-cents or `Decimal` backed, never `Double`.
 - [ ] 6.6 Model types for the status, plan, and connection responses, decoded from
-      the published contract's shapes.
+      the published contract's shapes. `OnboardingStatus` and `BudjSession` are
+      done, along with the failure and collection envelopes; plan and connection
+      remain.
 - [ ] 6.7 Check the contract artifact's conformance vectors into the test target.
 
 ## 7. Core: session
