@@ -130,11 +130,20 @@ every state.
       `SessionProviding` so the API client reads its token from the same object
       the root view routes on. Sign-out lives on `Authenticator`, which is what
       owns both the client and the store.
-- [ ] 7.3 `BiometricGate` — availability check and unlock; a cancelled or failed
-      prompt returns a definite "fall back to sign-in", not an error the caller
-      has to interpret. Not needed for email sign-in, so not built. The store
-      side of it exists: `SessionStore.restore()` already turns a
-      `KeychainError.notUnlocked` into no session plus `isLocked`.
+- [x] 7.3 ~~`BiometricGate`.~~ **Done.** `BiometricUnlock` has two cases and no
+      error case: a cancelled prompt, a failed match, a changed enrolment and a
+      device with no biometry at all are one answer — sign in again — and a
+      caller that has to tell them apart is a caller that gets one of them
+      wrong. Nothing enrolled short-circuits without prompting, so nobody is
+      shown a prompt they cannot pass. `LAContext` is behind a
+      `BiometricEvaluating` seam, and the real one builds a fresh context per
+      evaluation because a reused one caches its success and can answer "yes"
+      without asking anybody anything; `localizedFallbackTitle` is empty, since
+      D8's fallback is sign-in rather than a second lock screen. It turned up a
+      missing plist key: `NSFaceIDUsageDescription` was absent, which fails
+      every evaluation on a Face ID device. The store side already existed:
+      `SessionStore.restore()` turns a `KeychainError.notUnlocked` into no
+      session plus `isLocked`.
 - [x] 7.4 ~~Test: nothing sensitive is written to user defaults.~~ **Done.**
       Two assertions: no stored token appears anywhere in the defaults, and no
       app-owned key is named for a credential.
