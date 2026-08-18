@@ -150,18 +150,38 @@ every state.
 
 ## 8. Launch
 
-- [ ] 8.1 `LaunchGateModel` — restore, unlock, fetch status, resolve a destination.
-      Pure enough to unit test with a stubbed API.
-- [ ] 8.2 Rewrite `RootView` to hold the launch screen over that work, with a
-      minimum duration floor, replacing the fixed `Task.sleep`.
-- [ ] 8.3 The four launch outcomes from D6, each with a screen: sign-in, a step,
-      ready, and a retryable connection failure. The failure case is the one that
-      will be skipped; do not skip it.
+- [x] 8.1 ~~`LaunchGateModel`.~~ **Done.** Holds no state and renders nothing, so
+      every outcome is reachable from a test. **"Unlock" turned out not to be a
+      step of its own:** reading the Keychain item *is* the biometric prompt, so
+      calling `BiometricGate.unlock()` first would raise a second one for the
+      same unlock. The gate restores and lets `SessionStore` turn a cancelled
+      prompt into no session. It also skips the read entirely when a session is
+      already held, because the retry in 8.3 runs the same gate and would
+      otherwise prompt again. Two mappings worth recording: a
+      `subscription_required` refusal is `billing` rather than unreachable — the
+      server naming the reason is the server naming the step — while a 500, a
+      decode failure and an offline device are one answer, since they differ in
+      cause and not in what the app can do.
+- [x] 8.2 ~~`RootView`.~~ **Done.** The 600ms floor was already there; it now
+      holds over `AppModel.start()` rather than over nothing.
+- [x] 8.3 ~~The launch outcomes, each with a screen.~~ **Done.** `AppPhase` grew
+      `unreachable` and `onboarding` now carries the server's step, so the
+      resolved destination survives into the router 9.2 will build.
+      `UnreachableView` is the one that would have been skipped: it says it
+      cannot reach Budj and that nothing is wrong with the user's account, which
+      at that point the app does not know to be false. Its retry re-runs the
+      gate rather than a second code path. Steps land on
+      `OnboardingStepPlaceholder`, which names the step rather than pretending
+      to be it, until 9.3/11.x/12.x.
 - [x] 8.4 ~~`MustUpdateView`.~~ **Done.** No dismissal, and it says the app must
       be updated rather than that Budj is unavailable. The App Store URL is a
       placeholder until there is an app id.
-- [ ] 8.5 Unit tests over the gate covering all four outcomes plus the
-      unsupported-client override.
+- [x] 8.5 ~~Unit tests over the gate.~~ **Done.** Ten, covering all four
+      outcomes, the unsupported-client override, a refused session being cleared
+      rather than retried, an unreadable Keychain item, and the retry not
+      re-reading the Keychain. The three "cannot be asked" causes are asserted
+      separately so a future change that starts guessing a step from one of them
+      fails a test.
 
 ## 9. Onboarding router
 
