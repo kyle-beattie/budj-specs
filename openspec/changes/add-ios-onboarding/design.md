@@ -564,6 +564,78 @@ visible in the tree.
 Revisit if Google is chosen natively (X3) and the OAuth dance turns out to want
 more of GoTrue than one endpoint.
 
+### D17. The address-confirmation link comes back to the app, and the sheet is the whole flow
+
+Registration against a project with email confirmation switched on returns a user
+and no session. The first cut showed that as an inline notice under the form —
+which is the one place it cannot work: the person leaves the app to open their
+mail, and the screen carrying the explanation is gone by the time they come back.
+
+So the notice is a **sheet**, and the sheet is presented from `RootView` rather
+than from the sign-in screen. That is the load-bearing part: the link may arrive
+on a cold start, minutes later, with the app resolved to whatever the launch gate
+decided. A sheet owned by the sign-in screen would have no owner in that case.
+
+The link itself is Supabase's. `supabase-js` on the server is left at its default
+`flowType` of `implicit` (D16 keeps the app out of GoTrue), so what comes back
+carries the session in the URL **fragment**:
+
+```
+…/auth/confirm#access_token=…&refresh_token=…&expires_in=3600&type=signup
+```
+
+**Supabase does not redirect to the app scheme directly.** `emailRedirectTo` is
+an `https://` page on our own server, and *that* page hands over to
+`budj://auth/confirm`. Mail is the reason: an address-confirmation link is opened
+from a mail client, and a great many of them open links in an embedded browser
+that will not follow a redirect into a custom scheme — some silently, some with a
+"cannot open page" the user has no way to act on. Others pre-fetch links to scan
+them, which against a scheme-redirect burns the single-use token before anybody
+taps it. An ordinary `https://` link is the only thing every mail client agrees
+how to open.
+
+The bridge has to be **a page, not a 302**, and this is the part that is easy to
+get wrong: a URL fragment is never sent to the server. A redirect handler cannot
+read `#access_token=…` because it was never given it. So `/auth/confirm` answers
+with a small HTML page that reads `location.hash` in the browser and sets
+`location.href` to `budj://auth/confirm` with the same fragment attached. That
+page earns its keep twice over — where the automatic hop is blocked it can render
+an "Open Budj" button, which is the same hand-off behind a tap the user made,
+and the one thing an embedded browser will honour.
+
+None of this reaches the app. Whatever the bridge does, the app is opened on
+`budj://auth/confirm` carrying the fragment, which is the only shape
+`EmailConfirmationLink` needs to know about — and it reads the query as well as
+the fragment, so a bridge that chooses to re-encode the values as query
+parameters works without a change here.
+
+The eventual upgrade is an **associated domain**, which would let
+`https://budj.app/auth/confirm` open the app with no hand-off at all. That needs
+a real domain and an `apple-app-site-association` file, it is already on the list
+as 15.1, and the bridge page stays either way — it is what desktop, Android, and
+a device without the app installed land on.
+
+The app reads the **refresh token** and exchanges it at `POST /api/auth/refresh`,
+rather than adopting the access token from the fragment directly. Two reasons: the
+fragment carries no user, and `BudjSession` has one — synthesising it would mean
+decoding a JWT the app has no business decoding; and the exchange is the same
+route and the same shape every other session in the app comes through, so nothing
+downstream can tell a confirmed address from an ordinary sign-in. One extra round
+trip, once, for a session that is not a special case.
+
+A refused link — expired, already used — arrives on the same URL as
+`#error=access_denied&error_code=otp_expired`. It is a state of the sheet, not an
+error alert: the answer is to register again or sign in, and both are behind the
+sheet.
+
+**This needs `add-onboarding` to serve the bridge** at
+`{PUBLIC_URL}/auth/confirm`, set `AUTH_REDIRECT_URL` to it, and add it to
+Supabase's redirect allow list. The server already forwards that value to
+`emailRedirectTo`, so the only new thing is the route — one Fastify handler
+replying `text/html`, no new dependency. Local Supabase has
+`enable_confirmations = false`, so the flow has to be turned on to be exercised
+at all.
+
 ## Risks / Trade-offs
 
 **The two silent failures.** Sending Apple's identity token where the

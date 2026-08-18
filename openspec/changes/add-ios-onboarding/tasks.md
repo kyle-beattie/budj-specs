@@ -316,6 +316,60 @@ every state.
       still signed out, so the local session is cleared whether the request
       succeeded, failed, or was refused.
 
+- [x] 10.10 ~~Agree the confirmation redirect with `add-onboarding` (D17).~~
+      **Done, and built** — see `add-onboarding` 4.13. **Not
+      the app scheme directly:** `emailRedirectTo` is an `https://` page on our
+      own server, because mail clients open links in embedded browsers that will
+      not follow a redirect into a custom scheme, and some pre-fetch links and
+      burn the single-use token before anybody taps. So `add-onboarding` serves
+      `{PUBLIC_URL}/auth/confirm`, points `AUTH_REDIRECT_URL` at it, and adds it
+      to Supabase's redirect allow list. That route must be **a page rather than
+      a 302** — the session arrives in the URL fragment, which is never sent to
+      the server, so only the browser can read it and hand it to
+      `budj://auth/confirm`. A visible "Open Budj" button for the case where the
+      automatic hop is blocked. Nothing in the app changed for it; the URL scheme
+      was already registered and the parse already read both halves of the URL.
+      **One thing the end-to-end run added:** the redirect carries `type=signup`,
+      and a recovery link would carry `type=recovery` on the same shape and with
+      a session of its own. The server keeps the two redirects apart, but the
+      parse now refuses `recovery` outright rather than leaving that as the only
+      lock.
+- [x] 10.11 ~~`EmailConfirmationLink` — read the redirect.~~ **Done.** Values
+      come from the fragment as well as the query, and both are read from the
+      *percent-encoded* strings: `URLComponents.fragment` hands back a decoded
+      value, which mangles the token it is there to carry. Decoding is form
+      decoding rather than URL decoding, because Supabase writes the spaces in
+      `error_description` as `+`. A confirmation URL carrying nothing usable is
+      answered as a refusal rather than ignored — the person is standing in front
+      of the app having just tapped the link, and is owed an answer. Everything
+      on another host or path answers nothing at all, which is what lets one
+      `onOpenURL` serve the bank callback too.
+- [x] 10.12 ~~`EmailConfirmationModel` and `ConfirmEmailSheet`.~~ **Done.** One
+      sheet, four states, and `ConfirmEmailNotice` is gone — it was an inline
+      notice on the one screen guaranteed not to be there when the answer
+      arrives. The model is built in `BudjApp` beside the authenticator and the
+      sheet is presented from `RootView`, so neither depends on the sign-in
+      screen having ever been shown. The exchange state carries no button and
+      disables interactive dismissal: there is nothing useful to press, and a
+      swipe landing between the link and the session would leave the app looking
+      signed out to someone who is not.
+- [x] 10.13 ~~Exchange the link's refresh token for a session.~~ **Done**, via
+      `Authenticator.completeEmailConfirmation(refreshToken:)` over a new
+      unauthenticated `Endpoint.exchange(refreshToken:)`. The *refresh* token is
+      what is spent, not the access token beside it in the fragment: the fragment
+      carries no user and `BudjSession` has one, and going through
+      `/api/auth/refresh` means the session arrives in the same shape as every
+      other one. Closing the sheet after a success runs `AppModel.signedIn()`,
+      which re-runs the gate — the step is the server's answer, not a guess.
+      Closing by swipe goes through the same path as the button, so a confirmed
+      session is not stranded behind a gesture.
+- [x] 10.14 ~~Tests.~~ **Done.** Twelve in `EmailConfirmationTests`, including
+      the two that matter: the fragment is what is read, and the value posted to
+      `/api/auth/refresh` is the refresh token, with the link's access token
+      appearing nowhere in the body. An expired link is asserted to reach no
+      server at all. Verified in the simulator as well — iOS resolves `budj://`
+      to the app, and all three visible states render.
+
 ## 11. Subscription
 
 - [ ] 11.1 Load products with StoreKit 2 and render `displayPrice` only. Grep the
