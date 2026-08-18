@@ -40,17 +40,19 @@
 
 ## 3. Design system: tokens
 
-- [ ] 3.1 `BudjColor`: semantic names resolving asset catalogue colours —
-      background, surface, raised, text primary/secondary/tertiary, accent,
-      danger, warning, border subtle/strong. Add the missing colour sets to the
-      catalogue with both appearances defined.
-- [ ] 3.2 `BudjSpacing`: a 4pt scale, named rather than numeric.
-- [ ] 3.3 `BudjRadius`: 12 / 20 / 28 / 32 / full. Nothing in the app uses a radius
-      not on this list.
-- [ ] 3.4 `BudjTypography`: display, headline, title, body, caption, and label
-      roles mapped onto Dynamic Type text styles. No fixed point sizes.
-- [ ] 3.5 `BudjMotion`: a standard curve, a springier curve for toggles and sheet
-      presentation, and three durations — 120 / 200 / 340ms.
+- [x] 3.1 ~~`BudjColor`.~~ **Done.** Ten colour sets added, both appearances
+      each. One extra the list did not anticipate: `onAccent`, dark in *both*
+      appearances, because the accent is amber in both — a label that flips with
+      the appearance is unreadable in one of them, which is exactly what the
+      first render of the primary button looked like.
+- [x] 3.2 ~~`BudjSpacing`.~~ **Done.** hair/tight/snug/regular/loose/section/screen.
+- [x] 3.3 ~~`BudjRadius`.~~ **Done.** 12 / 20 / 28 / 32. "Full" is not a member:
+      it is `Capsule`, which is a shape rather than a number, and buttons apply
+      it directly.
+- [x] 3.4 ~~`BudjTypography`.~~ **Done.** Plus a `badge` role, for the one place
+      uppercase tracked text is permitted.
+- [x] 3.5 ~~`BudjMotion`.~~ **Done.** Both curves, all three durations, and the
+      Reduce Motion step transition.
 - [ ] 3.6 Money formatting helper over `Decimal` with `FormatStyle`, NZD, two
       decimals, thousands separators, `.monospacedDigit()`. Not used much in
       onboarding — written here so the tabs inherit it rather than inventing it.
@@ -60,20 +62,25 @@
 Each is its own file, takes values and closures only, and ships with previews for
 every state.
 
-- [ ] 4.1 `BudjButtonStyle` — primary, secondary, and quiet variants; press scale
-      0.96; full radius; the accent glow reserved for primary.
+- [x] 4.1 ~~`BudjButtonStyle`.~~ **Done.** Three variants, press scale 0.96,
+      capsule, glow on primary alone, and an in-place loading state that keeps
+      the button's size so the action area does not jump.
 - [ ] 4.2 `BudjCard` — solid surface, 28pt radius, `@ViewBuilder` content.
 - [ ] 4.3 `GlassSurface` — the signature treatment, mapped to iOS 26's native
       glass APIs rather than a hand-built blur. Reserved for surfaces floating
       over content.
-- [ ] 4.4 `BudjTextField` — label, placeholder, error text, secure variant.
+- [x] 4.4 ~~`BudjTextField`.~~ **Done.** The error is part of the component, and
+      the border changes with it, so the state is not carried by colour alone.
 - [ ] 4.5 `BudjToggleRow` — label, optional footnote, binding.
 - [ ] 4.6 `BudjBadge` — the one place uppercase tracked text is permitted.
 - [ ] 4.7 `BudjBankRow` — institution name, idle/connecting/connected state, a
       button, distinguishable without colour.
-- [ ] 4.8 `StepScaffold` — title, `@ViewBuilder` body, primary action, optional
-      secondary action. Every onboarding screen is built on it.
+- [x] 4.8 ~~`StepScaffold`.~~ **Done.** Title, subtitle, body and action slots;
+      the action area is the floating surface, so it is where glass belongs.
+      Capped at 560pt so onboarding stays a single column on iPad.
 - [ ] 4.9 `PressScale` and `CardSurface` modifiers, exposed as `View` extensions.
+      `PressScale` is done (it drops the scale but keeps the dimming under Reduce
+      Motion); `CardSurface` waits for the first component that needs it.
 - [ ] 4.10 `MoneyText` — a `Decimal` and a style, monospaced digits. Written now,
       used later.
 
@@ -115,15 +122,22 @@ every state.
 
 ## 7. Core: session
 
-- [ ] 7.1 `KeychainStore` — device-only accessibility, optional biometric access
-      control using `.biometryCurrentSet`.
-- [ ] 7.2 `SessionStore` — an `@Observable` holding the current session, reading
-      and writing through the Keychain, exposing sign-out.
+- [x] 7.1 ~~`KeychainStore`.~~ **Done.** `WhenUnlockedThisDeviceOnly`, optional
+      `.biometryCurrentSet`. Writes are delete-then-add rather than update,
+      because an update cannot change the access control — turning biometry on
+      for an existing session would otherwise silently do nothing.
+- [x] 7.2 ~~`SessionStore`.~~ **Done.** `@Observable`, conforms to
+      `SessionProviding` so the API client reads its token from the same object
+      the root view routes on. Sign-out lives on `Authenticator`, which is what
+      owns both the client and the store.
 - [ ] 7.3 `BiometricGate` — availability check and unlock; a cancelled or failed
       prompt returns a definite "fall back to sign-in", not an error the caller
-      has to interpret.
-- [ ] 7.4 Test: nothing sensitive is written to user defaults. Assert it rather
-      than believing it.
+      has to interpret. Not needed for email sign-in, so not built. The store
+      side of it exists: `SessionStore.restore()` already turns a
+      `KeychainError.notUnlocked` into no session plus `isLocked`.
+- [x] 7.4 ~~Test: nothing sensitive is written to user defaults.~~ **Done.**
+      Two assertions: no stored token appears anywhere in the defaults, and no
+      app-owned key is named for a credential.
 
 ## 8. Launch
 
@@ -134,7 +148,9 @@ every state.
 - [ ] 8.3 The four launch outcomes from D6, each with a screen: sign-in, a step,
       ready, and a retryable connection failure. The failure case is the one that
       will be skipped; do not skip it.
-- [ ] 8.4 `MustUpdateView` — terminal, no way back, distinguishable from an outage.
+- [x] 8.4 ~~`MustUpdateView`.~~ **Done.** No dismissal, and it says the app must
+      be updated rather than that Budj is unavailable. The App Store URL is a
+      placeholder until there is an app id.
 - [ ] 8.5 Unit tests over the gate covering all four outcomes plus the
       unsupported-client override.
 
@@ -164,12 +180,21 @@ every state.
       wrong produces a working app and an undeletable account, discovered in
       `add-account-deletion` months later.
 - [ ] 10.5 Google sign-in by whichever route 1.3 chose.
-- [ ] 10.6 Email and password sign-in and registration, as the fallback.
+- [x] 10.6 ~~Email and password sign-in and registration.~~ **Done.** One screen
+      for both. Registration that returns no session is its own outcome rather
+      than a failure — that is what a project with email confirmation switched on
+      does, and an app that guesses shows an error to someone whose account was
+      created perfectly. A refused sign-in says neither which field was wrong nor
+      that a session ended: it announced `sessionEnded` at first, which would
+      have bounced people off the screen they were signing in on.
 - [ ] 10.7 A failed authorization-code exchange is logged and does not fail
       sign-in.
 - [ ] 10.8 Forward Apple's name components when present; never derive a name from
       an email address. Test the private-relay case explicitly.
-- [ ] 10.9 Sign-out clears the Keychain item and returns to the entry point.
+- [x] 10.9 ~~Sign-out clears the Keychain item and returns to the entry point.~~
+      **Done.** The server call is best-effort: someone signing out on a train has
+      still signed out, so the local session is cleared whether the request
+      succeeded, failed, or was refused.
 
 ## 11. Subscription
 
