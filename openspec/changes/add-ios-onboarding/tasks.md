@@ -8,8 +8,13 @@
       server redirects to after the code exchange, and what the app registers to
       receive it. Blocks 12.2. **This is a gap in the server change too** — record
       the answer there as well.
-- [ ] 1.3 Decide Google sign-in: GoogleSignIn SDK or Supabase OAuth through the
-      web authentication session (X3). Blocks 10.5.
+- [x] 1.3 ~~Decide Google sign-in (X3).~~ **Deferred, deliberately.** Neither
+      route is chosen and Google is not in this change. Apple plus email
+      satisfies review, and picking between a third-party SDK and a browser
+      round trip under onboarding's deadline is how the zero-dependency
+      position gets spent by accident. Revisit once onboarding ships; the
+      Supabase-OAuth route will be cheaper then, because task 12 builds the
+      `ASWebAuthenticationSession` machinery it needs.
 - [x] 1.4 ~~Decide whether a welcome screen precedes sign-in (X5).~~ **Done —
       yes.** `WelcomeView` is the first screen, with "Create an account" and "I
       already have an account" as two actions of equal weight; both open the
@@ -241,15 +246,42 @@ every state.
 
 ## 10. Identity
 
-- [ ] 10.1 `SignInWithAppleButton`, requesting full name and email.
-- [ ] 10.2 Send the credential's **identity token** to Supabase.
-- [ ] 10.3 Send the credential's **authorization code** to the Budj server, after
-      the session exists.
-- [ ] 10.4 Test asserting 10.2 and 10.3 send the *right artifact to the right
-      place*. This is the single highest-value test in the change: getting it
-      wrong produces a working app and an undeletable account, discovered in
-      `add-account-deletion` months later.
-- [ ] 10.5 Google sign-in by whichever route 1.3 chose.
+- [x] 10.1 ~~`SignInWithAppleButton`.~~ **Done.** `.fullName` is requested even
+      though Apple supplies it only on the first authorisation: it is the single
+      opportunity to seed a display name, and not asking means never having it.
+      Apple's own button rather than a `BudjButtonStyle` one — its appearance is
+      prescribed by the HIG and re-skinning it is a review rejection, so it is
+      the one control in the app that does not come from the design system.
+      Cancelling is silent; it is a sheet the person closed, not a failure.
+- [x] 10.2 ~~Identity token to Supabase.~~ **Done**, via `SupabaseIdentity` —
+      the one direct call, in `Core/Session` rather than `Core/Networking`
+      because it carries no bearer token and no `X-Client-Build` (D16).
+      **It needed its own coders.** GoTrue's shape is not the contract's:
+      snake_case keys, a Unix `expires_at`, and `email_confirmed_at` as a
+      timestamp where the contract has a boolean — and it emits fractional
+      seconds, which `.iso8601` refuses outright. Sharing `BudjAPI`'s decoder
+      would have failed at runtime on the first real sign-in. The translation to
+      `BudjSession` happens once, so nothing downstream can tell how the user
+      got here. A Supabase refusal is mapped to a distinct code rather than to
+      `unauthorized`, which would have announced that a session ended when the
+      truth is that one was never established.
+- [x] 10.3 ~~Authorization code to the Budj server.~~ **Done**, after the
+      session exists, because that route is authenticated. Asserted by ordering
+      rather than by inspection: the test checks the grant request carries the
+      bearer token Supabase had just issued.
+- [x] 10.4 ~~The right artifact to the right place.~~ **Done, and verified by
+      mutation.** Three independent assertions: each artifact reaches its own
+      destination, no identity token appears in any body sent to the Budj
+      server, and no authorization code appears in any body sent to Supabase.
+      The two negative assertions exist because the positive one alone would
+      still pass if a fixture happened to use the same value for both. The
+      artifacts were then deliberately swapped in `Authenticator` to confirm the
+      suite fails — all three caught it. A test for a defect with no symptom is
+      worth nothing unless it has been seen to fail.
+- [x] 10.5 ~~Google sign-in.~~ **Out of scope — 1.3 deferred it.** The app
+      offers Apple and email. `SupabaseIdentity.Provider` keeps its `google`
+      case and the exchange is provider-agnostic, so whichever route is chosen
+      later plugs into the same call; nothing here needs undoing first.
 - [x] 10.6 ~~Email and password sign-in and registration.~~ **Done.** One screen
       for both. Registration that returns no session is its own outcome rather
       than a failure — that is what a project with email confirmation switched on
@@ -257,10 +289,28 @@ every state.
       created perfectly. A refused sign-in says neither which field was wrong nor
       that a session ended: it announced `sessionEnded` at first, which would
       have bounced people off the screen they were signing in on.
-- [ ] 10.7 A failed authorization-code exchange is logged and does not fail
-      sign-in.
-- [ ] 10.8 Forward Apple's name components when present; never derive a name from
-      an email address. Test the private-relay case explicitly.
+- [x] 10.7 ~~A failed exchange does not fail sign-in.~~ **Done.** Two ways to
+      fail and both are survivable: the route answering non-200, and it
+      answering 200 with `stored: false` because Apple refused. Neither undoes
+      the session. The code is single-use, so there is nothing to retry, and
+      refusing somebody entry over a deletion concern they will not meet for
+      months is the wrong trade.
+- [x] 10.8 ~~Names.~~ **Done in the app, and it turned up a gap that is not the
+      app's to close.** `AppleCredential` has no path from an email address to a
+      name; blank components are `nil` rather than an empty string; the
+      private-relay case is asserted by checking the relay address appears
+      nowhere in the request body at all, rather than by checking one field.
+      **The gap:** the server's `handle_new_user` trigger reads `full_name` from
+      `raw_user_meta_data`, and GoTrue populates that from the *id-token
+      claims* — but Apple does not put the name in the JWT. It arrives beside
+      it, once. D16 says to send `data.full_name` on the id-token exchange, and
+      the app does, but GoTrue's `id_token` grant has no documented `data`
+      parameter and very likely ignores it. If so the display name is never
+      seeded for Apple sign-in, silently, and the migration's own comment says
+      it is then unrecoverable. Needs deciding with `add-onboarding`: either a
+      server route that accepts the name alongside the Apple grant, or the app
+      calling `PATCH /auth/v1/user` — though the trigger fires on insert, so
+      that alone would not seed `profiles`.
 - [x] 10.9 ~~Sign-out clears the Keychain item and returns to the entry point.~~
       **Done.** The server call is best-effort: someone signing out on a train has
       still signed out, so the local session is cleared whether the request

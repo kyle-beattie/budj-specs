@@ -627,11 +627,16 @@ them change meaningfully:
    server's status as the outcome, but the callback URL has to be agreed with the
    server change before either side can be built. **This is a gap in
    `add-onboarding`, not only here.**
-3. **Native Google sign-in normally means the GoogleSignIn SDK** — another
-   third-party dependency, and a heavier one. The alternative is Supabase's OAuth
-   flow through `ASWebAuthenticationSession`, which needs no SDK and reuses the
-   machinery D10 already builds for Akahu, at the cost of a browser round trip
-   rather than a native sheet. Sign in with Apple is native either way.
+3. ~~**Native Google sign-in normally means the GoogleSignIn SDK**~~
+   **Deferred — Google is not in this change.** The two routes are the SDK,
+   which is a third-party dependency and would cost the position D16 takes, and
+   Supabase's OAuth flow through `ASWebAuthenticationSession`, which needs no
+   SDK and reuses the machinery D10 builds for Akahu, at the cost of a browser
+   round trip. Neither is chosen: Apple plus email satisfies review, and
+   spending the zero-dependency position under onboarding's deadline is how it
+   gets spent by accident. Revisit after onboarding ships, when the OAuth route
+   is the cheaper of the two because task 12 will already have built the web
+   authentication session it needs.
 4. **What does the app show for a broken bank connection?** Open question 5 of
    the server change, unresolved there, and the app is where it becomes visible.
    Out of scope for onboarding — a connection cannot break during the minute it
