@@ -571,6 +571,60 @@
       is what makes a *configured* gate testable at all — `config` is read once
       at import, so the real app cannot be reconfigured per test.
 
+- [x] 4.13 ~~Serve the address-confirmation bridge.~~ **Done.**
+      `GET /auth/confirm`, mounted outside `/api` because a browser reaches it
+      rather than the app, in `modules/auth/confirm.routes.ts`. One handler
+      replying `text/html`, no new dependency.
+
+      **It is a page, not a 302**, and the end-to-end run proved why: Supabase
+      answers the verify link with `303 → …/auth/confirm#access_token=…`. The
+      session is in the *fragment*, which is never sent to the server, so a
+      redirect handler would have nothing to forward. The page reads
+      `location.hash` in the browser and hands it to `budj://auth/confirm`
+      unchanged, strips it from the address bar and the history entry first, and
+      leaves an "Open Budj" button for the embedded browsers that block the
+      automatic hop.
+
+      **Three things this turned up that the plan did not have:**
+
+      1. **The client-build gate had to exempt it.** A mail client sends no
+         `X-Client-Build`, and a missing header is treated as unsupported by
+         design — so without the exemption the bridge answered 426 and told
+         someone to update an app they were in the middle of signing into.
+      2. **CSP had to be set per route.** Helmet's global policy is disabled
+         outside production, so the inline script the page exists to run would
+         have worked in development and been refused by `script-src 'self'` in
+         production. The route now carries its own policy with a sha256 of the
+         served script, computed from the same string that is embedded, so the
+         two cannot drift.
+      3. **Password reset could not share the redirect.** `config.auth.redirectUrl`
+         fed both `signUp` and `resetPasswordForEmail`. A recovery link *also*
+         returns a session, so pointing that one value at the bridge would have
+         signed someone in and told them their email was confirmed when what they
+         asked for was a new password. Sign-up now uses a separate
+         `config.auth.confirmUrl`, defaulting to this server's own route so the
+         flow works with nothing configured; reset is untouched.
+
+      **Turning `enable_confirmations` on broke 22 integration tests**, and the
+      fix belonged in the harness rather than in the setting. `signUpTestUser`
+      asserted a session came back and named the setting in its own error
+      message, so the whole integration suite silently depended on local being
+      configured unlike production. It now signs up for real — `handle_new_user`
+      still fires on a genuine insert, which is what `profiles.test.ts` is there
+      to check — and, when no session comes back, confirms the address through
+      the admin API and signs in. Works either way round now, so the setting is
+      free to match production.
+
+      `enable_confirmations` is now `true` in `supabase/config.toml`, and the
+      bridge is in `additional_redirect_urls` under both spellings of localhost —
+      Supabase matches redirect targets exactly and silently falls back to
+      `site_url` otherwise. Verified end to end against local Supabase: sign-up
+      returns `{session: null, confirmationRequired: true}`, the email links to
+      `…/auth/v1/verify?…&redirect_to=http://localhost:3000/auth/confirm`, that
+      redirects to the bridge with the session in the fragment, and the refresh
+      token from it exchanges at `/api/auth/refresh` for a session with
+      `emailConfirmed: true`. Nine tests in `test/auth.confirm.test.ts`.
+
 ## 11. Wiring and documentation
 
 - [x] 11.1 Register `billing`, `bank-connections`, `devices` and `onboarding` in

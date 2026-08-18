@@ -69,6 +69,58 @@ users who do not use a provider.
 - **THEN** the resulting session is used identically to a provider-issued one and
   routing proceeds on onboarding status
 
+### Requirement: Registration that needs confirmation is presented as a sheet
+
+When registration succeeds without a session, the app SHALL present a sheet
+stating that the address must be confirmed and naming the address the link was
+sent to. It MUST NOT present the outcome as a failure, and MUST NOT leave the
+person on the form with no explanation of what to do next.
+
+#### Scenario: A registration with no session opens the confirmation sheet
+
+- **WHEN** creating an account returns `confirmationRequired` and no session
+- **THEN** a sheet is presented asking the user to confirm their email address
+- **AND** it names the address the link was sent to
+
+#### Scenario: A registration with a session opens no sheet
+
+- **WHEN** creating an account returns a session
+- **THEN** no confirmation sheet is presented and the user proceeds into
+  onboarding
+
+### Requirement: The confirmation link returns to the app and establishes the session
+
+The address-confirmation email SHALL reach the app on its own URL scheme. How it
+gets there is the server's — the email links to an ordinary `https://` address,
+because mail clients cannot be relied on to open a custom scheme — and the app
+SHALL make no assumption beyond being opened on its own scheme. On receiving that
+link the app SHALL exchange what it carries for a session, state in the same
+sheet that the address is confirmed, and continue into onboarding signed in —
+without asking for the password a second time.
+
+#### Scenario: A valid confirmation link signs the user in
+
+- **WHEN** the app is opened by the confirmation link
+- **THEN** the session it carries is established and stored
+- **AND** the sheet states that the email address is confirmed
+- **AND** continuing from the sheet resolves the onboarding step from the server
+
+#### Scenario: The link is received on a cold start
+
+- **WHEN** the app is not running and is launched by the confirmation link
+- **THEN** the same sheet is presented over whatever the launch resolved
+
+#### Scenario: An expired or already-used link is not a dead end
+
+- **WHEN** the confirmation link is expired, already used, or otherwise refused
+- **THEN** the sheet says the link cannot be used and offers a way back to
+  sign-in, rather than reporting that something went wrong
+
+#### Scenario: A link the app does not recognise is ignored
+
+- **WHEN** the app is opened by a URL that is not a confirmation link
+- **THEN** no confirmation sheet is presented
+
 ### Requirement: The session is stored in the Keychain, never in preferences
 
 The refresh token SHALL be stored in the Keychain with device-only accessibility,
