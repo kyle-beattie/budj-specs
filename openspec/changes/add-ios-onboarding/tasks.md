@@ -10,8 +10,12 @@
       the answer there as well.
 - [ ] 1.3 Decide Google sign-in: GoogleSignIn SDK or Supabase OAuth through the
       web authentication session (X3). Blocks 10.5.
-- [ ] 1.4 Decide whether a welcome screen precedes sign-in (X5). One screen and a
-      copy decision; blocks nothing but 9.3.
+- [x] 1.4 ~~Decide whether a welcome screen precedes sign-in (X5).~~ **Done —
+      yes.** `WelcomeView` is the first screen, with "Create an account" and "I
+      already have an account" as two actions of equal weight; both open the
+      same screen and differ only in which mode it starts in. It is the entry
+      point rather than a step completed once, so signing out returns you to it.
+      Recorded as X5 in the design.
 
 ## 2. Restructure and foundations
 
@@ -185,18 +189,55 @@ every state.
 
 ## 9. Onboarding router
 
-- [ ] 9.1 `OnboardingStep` enum and `OnboardingModel` — holds the server's step,
-      the advisory push flag, and the local record of which client-only steps have
-      been offered.
-- [ ] 9.2 `OnboardingFlowView` — switches over the step with a value-driven
-      transition. Not a `NavigationStack`; see D13.
-- [ ] 9.3 The screens: welcome (if 1.4 says so), sign-in, paywall, biometric
-      opt-in, connect bank, push opt-in, each on `StepScaffold`.
-- [ ] 9.4 Refresh status after purchase submission and after the bank session
-      returns, and after nothing else.
-- [ ] 9.5 Unit tests: the model never advances on a local success alone; a
-      `subscription_required` failure returns it to billing; a client-only step
-      already offered is not offered again.
+- [x] 9.1 ~~`OnboardingStep` and `OnboardingModel`.~~ **Done, and D5 needed
+      resolving.** D5 says Face ID is offered "immediately after sign-in" and
+      also that "the paywall sits between sign-in and Face ID". Those cannot
+      both hold: after sign-in the server says `billing`, so Face ID cannot
+      precede it. **Resolved against D5's paywall line rather than for it:**
+      the order is welcome → signIn → biometrics → billing → bank → push →
+      ready. "Billing before bank" is a statement about the *server's* step
+      order, and Face ID is not one of the server's steps, so nothing forced
+      the paywall in front of it — and meeting the price as the first thing
+      after signing in is worse for no gain. Face ID is keyed off the first
+      server step after signing in, whatever it is, rather than off `billing`:
+      keying it to `billing` would skip the offer entirely for somebody who
+      reinstalls, signs in and lands on `bank` because they already subscribed.
+      Push is offered before `ready`. D5 has been updated. There is deliberately no `advance()` — the step moves
+      on a refresh or on a client-only step being recorded, and by no other
+      means. `ClientStepRecord` is a seam over user defaults; the real keys are
+      named for the step and never for what it turns on, so 7.4's assertion
+      about credential-shaped key names keeps holding.
+- [x] 9.2 ~~`OnboardingFlowView`.~~ **Done.** A switch with
+      `BudjMotion.stepTransition(reduceMotion:)`, animated on the step value.
+      `AppPhase` lost the `resuming` payload it gained in 8.3: the router holds
+      the step now, and two objects holding it is two objects that can
+      disagree. `AppModel` owns the router for the same reason — it is what
+      turns a launch destination into a step.
+- [ ] 9.3 The screens: welcome, sign-in, paywall, biometric opt-in, connect
+      bank, push opt-in, each on `StepScaffold`.
+      **Three of six done, and the rest are not this section's to build.**
+      Sign-in landed in 10.6. `WelcomeView` is new here now 1.4 has answered:
+      what Budj does, then two actions of equal weight. `BiometricOptInView` is
+      new here too, because 7.3 and 7.2 gave it everything it needs — it names
+      the biometry, turning it on rewrites the stored session behind the access
+      control, and both answers are recorded identically because the router
+      only cares that it asked. The paywall, connect-bank and push screens
+      belong to 11.x, 12.x and 13.x, and building stand-ins for them here would
+      be three screens to delete. `OnboardingStepPlaceholder` names those three
+      steps rather than pretending to be them.
+- [x] 9.4 ~~Refresh after the steps that change server state, and after nothing
+      else.~~ **Mechanism done** — `OnboardingModel.refresh()`, with a
+      `subscription_required` refusal mapping to billing plus an explanation.
+      The two call sites are 11.2 and 12.2, which is where those steps are. A
+      failed refresh is explicitly not progress: the step on screen stays put
+      rather than being replaced by a guess.
+- [x] 9.5 ~~Unit tests.~~ **Done.** Seventeen, covering all three required
+      cases plus the whole order in one pass, Face ID offered before whichever
+      server step comes first, a client step answered without a round trip,
+      declining recorded the same as accepting, signing out returning to
+      welcome, and a device with no biometry not being offered it — and not
+      recorded as offered either, so a device that gains an enrolment can still
+      be asked.
 
 ## 10. Identity
 

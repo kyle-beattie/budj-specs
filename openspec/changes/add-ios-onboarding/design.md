@@ -281,10 +281,23 @@ both record their outcome locally, since a declined permission asked again on
 every launch is hostile and, for notifications, the system will not re-prompt
 anyway.
 
-**The paywall sits between sign-in and Face ID**, because the server requires
-billing before bank unconditionally and there is no free tier. A person meets the
-price roughly ten seconds after signing in, which is a real product risk and the
-reason open question 5 asks whether anything should precede sign-in.
+**Face ID comes before the paywall, not after it.** An earlier draft of this
+section put the paywall first on the grounds that the server requires billing
+before bank unconditionally — but that is a statement about the server's step
+order, and Face ID is not one of the server's steps. Nothing prevents the app
+from asking about the session it has just established before it asks for money,
+and meeting the price as the very first thing that happens after signing in is
+worse UX for no gain. The order is:
+
+```
+   welcome → signIn → biometrics → billing → bank → push → ready
+             └ app ┘  └── app ──┘  └──── server ───┘ └app┘
+```
+
+The Face ID step is keyed off **the first server step after signing in**, whatever
+it is, rather than off `billing` specifically. Keying it to `billing` would skip
+the offer entirely for somebody who reinstalls, signs in, and lands directly on
+`bank` because they already subscribed.
 
 ### D6. The launch gate replaces the timed hold
 
@@ -624,8 +637,10 @@ them change meaningfully:
    Out of scope for onboarding — a connection cannot break during the minute it
    takes to create it — but `ConnectBankView` is reused from settings later, and
    whoever specifies the recovery flow should start from that screen.
-5. **Is there a welcome screen before sign-in, or does the app open on sign-in?**
-   A first-run screen that says what Budj does before asking for an Apple account
-   is probably worth having, given there is no free tier and the paywall arrives
-   immediately after. Costs one screen; needs a copy decision, not an engineering
-   one.
+5. ~~**Is there a welcome screen before sign-in, or does the app open on
+   sign-in?**~~ **Answered — yes.** `WelcomeView` is the first screen: what Budj
+   does, then two actions of equal weight, "Create an account" and "I already
+   have an account". Both open the same screen and differ only in which mode it
+   starts in. It is the entry point rather than a step completed once, so it is
+   not recorded and not skipped — signing out returns you to it, and so does
+   relaunching while signed out.
