@@ -128,8 +128,11 @@ which makes it unreadable through the anon and user clients, since PostgREST
 denies by default. Only the service-role client can read it.
 
 The token is additionally encrypted with a key held in the environment
-(`AKAHU_TOKEN_ENC_KEY`), not in Postgres, so a database dump alone does not
-yield bank access for every user.
+(`TOKEN_ENC_KEY`), not in Postgres, so a database dump alone does not
+yield bank access for every user. The variable is named for what it does rather
+than for Akahu, because the same key protects Apple's refresh token (D13): a key
+called `AKAHU_TOKEN_ENC_KEY` invites someone to rotate "the Akahu key" and
+silently orphan every Apple grant along with it.
 
 *Alternatives considered:* storing it on `profiles` under normal owner-RLS —
 rejected, because the iOS app could then read it and bypass the server, and a
@@ -144,8 +147,15 @@ normal request. D4 forces a second use. The exception is written down rather tha
 allowed to erode:
 
 > The service client may fetch a credential keyed by `userId`. It must never
-> return a database row to a caller. `getAkahuToken(userId)` is the only
-> non-admin service-role read in the codebase.
+> return a database row to a caller.
+
+The list is closed, and each entry needs that justification written down or the
+rule erodes within a month:
+
+1. `getAkahuToken(userId)` — the Akahu access token (D4).
+2. `AppleGrantRepository` — Apple's refresh token (D13). Structurally identical
+   custody: deny-all RLS, withheld from `authenticated`, encrypted at rest, and
+   the accessor returns a credential or a boolean, never a row.
 
 The App Store Server Notifications handler is a second, structurally different
 exception: it is authenticated by a JWS certificate chain rather than by JWT, so
@@ -183,10 +193,11 @@ under RLS restores the second guard that `CLAUDE.md` calls deliberate.
 call. Storing balances too — rejected, it is the highest-sensitivity field
 available and it is stale the moment it is written.
 
-Payment capability is recorded in **two** directions, because Akahu governs them
-differently: `payment_from` follows the `PAYMENT_FROM` attribute Akahu reports on
-the account, and `payment_to` follows BECS identifiability, which is what allows
-a verification token to be issued. An account can be one and not the other.
+Payment capability is recorded in **two** directions. Akahu reports **both** as
+account attributes — `PAYMENT_FROM` and `PAYMENT_TO` — so both are read
+directly rather than derived. An earlier draft of this decision inferred
+"can receive" from BECS identifiability; that inference was unnecessary and
+would have been wrong wherever Akahu's own view differed from ours. An account can be one and not the other.
 Credit cards, loans and investment accounts can trigger rules but can never
 receive money, and the rule editor needs to know that before `add-rule-triggers`
 exists.
@@ -199,6 +210,15 @@ type from Akahu degrades rather than failing the sync.
 
 Requested at connection: `accounts:basic`, `accounts:owner`,
 `transactions:credits`, `transactions:debits`, `user:basic`.
+
+**This requires the pushed authorisation request (`POST /v1/par`), not an
+inline `oauth.akahu.nz` URL.** With the inline method the granular scopes come
+from static app configuration in Akahu's dashboard and the `scope` query
+parameter carries only `ENDURING_CONSENT` — so "the request asks for exactly
+these five scopes" would be neither true nor testable, and the scope set would
+live in a dashboard rather than in this repository. PAR puts the scope array in
+the request body, which is what makes the requirement assertable at all. Akahu
+returns the `authorisation_url`; this server does not build it.
 
 - `accounts:owner` is required to generate the account verification tokens that
   `add-rule-triggers` will need. Requesting it now avoids a second redirect later
@@ -408,6 +428,34 @@ Built now because it cannot be built in a hurry: the version that needs blocking
 is, by definition, already shipped, and a client that does not send its build
 identifier cannot be gated at all.
 
+### D17. Duplicate identities are accepted, not detected and not linked
+
+A person who signs in with Google today and Apple next month gets two
+`auth.users`, two subscriptions and two Akahu connections — and two Akahu bills.
+This change does nothing to prevent that.
+
+The alternatives were weighed and both lose to doing nothing:
+
+- **Block the second provider.** Requires recognising the returning person, and
+  the only available join key is the email address. Apple's Hide My Email (D3)
+  means that key is absent exactly when it matters, so detection catches the
+  easy cases and misses the ones that cost money. Worse, a false positive locks
+  someone out of their own account at the second screen of onboarding, with no
+  self-service recovery.
+- **Link the accounts.** The right answer for the user, and the most work: it
+  needs an identity-merge path across subscriptions, connections and rules, and
+  Supabase's linking API does not cover the native `signInWithIdToken` flow.
+  Merging two paid subscriptions is not a problem this change should be solving.
+
+So: duplicates are permitted, and the cost is a second Akahu bill for a user who
+does it. The mitigation is a client-side one — the iOS app remembers which
+provider was used and offers it first on the sign-in screen — which costs
+nothing here and removes most of the accidental cases.
+
+This is worth revisiting once there is real signal on how often it happens. It
+is recorded as a decision rather than left open because it was blocking
+section 4, and "we accept duplicates" is a real answer.
+
 ### D16. Currency defaults become NZD
 
 `accounts.types.ts`, the `accounts` table default, and
@@ -422,7 +470,7 @@ referenced by a rule; every Akahu call takes an explicit `userId` resolved from
 the verified JWT, never from a request body.
 
 **The encryption key is a single point of failure.** Losing
-`AKAHU_TOKEN_ENC_KEY` orphans every stored token and forces every user to
+`TOKEN_ENC_KEY` orphans every stored token and forces every user to
 reconnect their bank. → Key stored in Render's secret store, documented in the
 runbook, and the token column carries a key-version prefix so rotation is
 possible without a flag day.
@@ -440,9 +488,10 @@ because it is a property of D8, not of that change.
 
 **Duplicate identities.** The same person signing in with Google and later Apple
 produces two `auth.users`, two subscriptions, two Akahu connections and two Akahu
-bills. Email matching does not help, because of the private relay (D3). → Not
-solved in this change; see Open Questions. The cost of deciding late is real
-money, so it should not be deferred far.
+bills. Email matching does not help, because of the private relay (D3). →
+Accepted rather than solved: D17 records why detection and linking both lose,
+and what the client does instead. Revisit when there is signal on how often it
+actually happens.
 
 **The migrations in this repository have never been applied to a running
 database.** Every RLS policy, the `handle_new_user` trigger, and the assumption
@@ -484,16 +533,18 @@ ship against this until it is complete.
 
 1. **Apple IAP or Stripe?** Blocking for the billing module. Everything else can
    proceed.
-2. **Identity linking policy** — block a second provider, link it, or accept
-   duplicates? Affects the sign-in spec and has a direct Akahu cost.
+2. ~~**Identity linking policy** — block a second provider, link it, or accept
+   duplicates?~~ **Resolved: accept duplicates.** See D17. No duplicate-detection
+   task is added to section 4.
 3. ~~Is Akahu's webhook subscription per app or per user?~~ **Resolved: per
    user**, created after token exchange. It is nonetheless deferred to
    `add-rule-triggers` along with the handler, because subscribing before an
    endpoint exists means Akahu posts to a 404 and may disable the endpoint after
    repeated failures. That change carries a backfill for users onboarded in
    between.
-4. **Key rotation procedure** for `AKAHU_TOKEN_ENC_KEY` — the versioned prefix
-   makes it possible, but nobody has written the runbook.
+4. **Key rotation procedure** for `TOKEN_ENC_KEY` — the versioned prefix
+   makes it possible and `parseKeyring` accepts `v2:<new>,v1:<old>`, but nobody
+   has written the runbook. Still open; 11.5 owns it.
 5. **What does the app show a user whose connection has broken?** Akahu
    connections can require re-authorisation. This change stores
    `disconnected_at`, but the recovery flow is unspecified.
