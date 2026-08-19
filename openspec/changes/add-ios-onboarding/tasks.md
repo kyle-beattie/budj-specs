@@ -244,6 +244,23 @@ every state.
       recorded as offered either, so a device that gains an enrolment can still
       be asked.
 
+- [x] 9.6 ~~Fix biometric unlock, which did not survive contact with a device.~~
+      **Done.** Three defects, one per symptom reported, each now with a test
+      that has been seen to fail against the old code (D8a):
+      **(a)** `SessionStore.requiresBiometry` started `false` every launch and
+      every write consults it, so the first token refresh after relaunching
+      rewrote the session without its access control — biometry silently gone,
+      permanently. It is now read at construction from `BiometricPreferenceStore`.
+      **(b)** "Use Face ID" never prompted, because `SecItemAdd` does not raise a
+      prompt — only reading does. The step now evaluates the biometric first, and
+      a refused write is reported rather than swallowed by a `try?`.
+      **(c)** The offered-record was keyed per install, so a second account on the
+      same device was never offered biometry. `ClientOnlyStep` now carries a
+      scope: push stays device-wide because iOS will not re-prompt, biometrics is
+      per user because a new session is a new question.
+      Verified in the simulator as well — the system Face ID prompt now appears
+      on the call the button makes, which is the part no unit test can assert.
+
 ## 10. Identity
 
 - [x] 10.1 ~~`SignInWithAppleButton`.~~ **Done.** `.fullName` is requested even

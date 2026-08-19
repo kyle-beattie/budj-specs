@@ -382,6 +382,36 @@ enrolled for this purpose.
 returns to sign-in. There is no retry counter and no lockout screen, because there
 is no local data to protect beyond a token that can be reissued by signing in.
 
+### D8a. Three things biometric unlock needs that D8 did not say
+
+D8 was implemented and shipped three defects, and they share a shape: nothing
+failed, nothing was logged, and the app went on claiming a protection it was not
+applying. Recorded here because each is a rule, not a patch.
+
+**The preference has to outlive the process.** The access control lives on the
+Keychain item, but the app decides on *every write* whether to reapply it. A
+`requiresBiometry` that starts `false` each launch means the first token refresh
+after relaunching — seconds in, unprompted, invisible — rewrites the session
+without the access control. Face ID is then never asked for again, and nothing
+anywhere says so. It is now read from storage at construction, device-scoped,
+because the item it describes is one item.
+
+**Turning it on has to prompt.** `SecItemAdd` does not raise a biometric prompt;
+only reading does. So the opt-in wrote the item behind the access control and
+nothing visible happened, and the first proof it had worked came a launch later.
+The step now evaluates the biometric *before* claiming it is on — which is also
+the only way to know the enrolment can satisfy the item about to be written — and
+a refused Keychain write is reported rather than swallowed, because a screen
+saying "Face ID is on" over a session that is not behind it is worse than one
+admitting it could not.
+
+**"Asked once" is not one question.** The client-step record was keyed per
+install, so the first account to answer answered for every account after it: a
+second user on the same device was never offered biometry at all. The two
+client-only steps differ and now say so — notification permission belongs to the
+app on the device, because iOS will not re-prompt whoever is signed in, while
+biometric unlock is about *the session*, and a new session is a new question.
+
 ### D9. StoreKit shows Apple's price string, and the server is told rather than asked
 
 Two rules, both narrow and both easy to violate:
