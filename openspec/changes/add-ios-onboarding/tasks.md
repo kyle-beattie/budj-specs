@@ -218,18 +218,26 @@ every state.
       the step now, and two objects holding it is two objects that can
       disagree. `AppModel` owns the router for the same reason — it is what
       turns a launch destination into a step.
-- [ ] 9.3 The screens: welcome, sign-in, paywall, biometric opt-in, connect
-      bank, push opt-in, each on `StepScaffold`.
-      **Three of six done, and the rest are not this section's to build.**
+- [x] 9.3 ~~The screens: welcome, sign-in, paywall, biometric opt-in, connect
+      bank, push opt-in, each on `StepScaffold`.~~ **Done — all six.**
       Sign-in landed in 10.6. `WelcomeView` is new here now 1.4 has answered:
       what Budj does, then two actions of equal weight. `BiometricOptInView` is
       new here too, because 7.3 and 7.2 gave it everything it needs — it names
       the biometry, turning it on rewrites the stored session behind the access
       control, and both answers are recorded identically because the router
-      only cares that it asked. The paywall, connect-bank and push screens
-      belong to 11.x, 12.x and 13.x, and building stand-ins for them here would
-      be three screens to delete. `OnboardingStepPlaceholder` names those three
-      steps rather than pretending to be them.
+      only cares that it asked.
+      **The last three arrived with their behaviour deliberately incomplete**,
+      because the server derives `billing` and `bank` from a real subscription
+      row and a real Akahu token (`onboarding.service.ts`) and neither exists
+      yet. So `PaywallView` and `ConnectBankView` are real screens with their
+      real copy, and their primary actions are **present and disabled** rather
+      than wired to something that looks like buying or connecting. Past them is
+      `DebugStepSkip` — a separate, labelled control, the whole file inside
+      `#if DEBUG`, so a release build has no way through except the real one. A
+      "Subscribe" button that silently advanced would be a lie that outlives the
+      reason for it. `PushOptInView` is not mocked at all: push is client-only,
+      so there was nothing to stand in for.
+      `OnboardingStepPlaceholder` is deleted — every step now has a screen.
 - [x] 9.4 ~~Refresh after the steps that change server state, and after nothing
       else.~~ **Mechanism done** — `OnboardingModel.refresh()`, with a
       `subscription_required` refusal mapping to billing plus an explanation.
@@ -389,8 +397,35 @@ every state.
 
 ## 11. Subscription
 
-- [ ] 11.1 Load products with StoreKit 2 and render `displayPrice` only. Grep the
-      paywall for a currency symbol afterwards; there should be none.
+> **Paused after 11.1 and 11.8, deliberately.** Reaching the trades needs an
+> Android app, and two app stores means two in-app purchase systems — StoreKit
+> and Google Play Billing — each with its own receipt verification, its own
+> notification webhook, and its own handling of refunds, upgrades and grace
+> periods, plus entitlement reconciliation between them. One web checkout serves
+> both platforms for roughly 3% instead of 15–30%. On ~2,000 subscribers at
+> $199/year that difference is six figures, and it is a decision worth making
+> *before* the purchase path exists rather than after. 11.2–11.7 stay unbuilt
+> until the rail is chosen; the debug skip on the paywall means nothing is
+> blocked by that. 11.1 and 11.8 are kept either way — they cost nothing to
+> hold, and if App Store billing wins they are already done.
+
+
+- [x] 11.1 ~~Load products with StoreKit 2 and render `displayPrice` only.~~
+      **Done, and it is real** — the plans, prices and cadence on the paywall
+      come from `Product.products(for:)`, not from a fixture. All contact with
+      `Product` is in `StoreKitPlanOffers`, which reduces it to `PlanOffer`:
+      a type carrying `displayPrice` as a **string** and no numeric price and no
+      currency code at all. Nothing downstream is given a number it could format,
+      which is a stronger guarantee than remembering not to. Grepped, as
+      instructed: no currency symbol in the paywall or the row.
+      The seam (`PlanOfferLoading`) exists because `SKTestSession` needs a
+      running StoreKit environment and `PaywallModel` is pure — five tests over
+      it, including the one the screen rests on: a store that cannot be asked
+      leaves the *price* unknown rather than the screen failed, because the plan
+      exists whether or not the App Store is reachable.
+      **One plan now, not two** (see the pricing note below), so `PaywallModel`
+      has no selection state and `PlanOptionRow` became `PlanSummaryCard` — with
+      a single plan, presenting it as a choice is theatre.
 - [ ] 11.2 Purchase, verify locally, submit the signed transaction, refresh status.
 - [ ] 11.3 Finish the transaction only after submission succeeds, so a failure is
       re-observed rather than lost.
@@ -400,8 +435,25 @@ every state.
       account.
 - [ ] 11.7 No cancellation control anywhere; direct to App Store subscription
       management instead.
-- [ ] 11.8 StoreKit configuration file for local testing, so the paywall can be
-      exercised without App Store Connect.
+- [ ] 11.9 **Collapse the server's plan catalogue to one plan.** `plans.ts` still
+      has `starter` and `pro`; the app now knows only `com.budj.standard.yearly`,
+      so a real submission would not resolve. Nine test files reference the two
+      codes, and `bank-connections.service.ts` gates on `plan.maxConnections`, so
+      the limits should stay as abuse guardrails rather than being deleted — they
+      are simply no longer a product tier and are not marketed. Belongs to
+      `add-onboarding`, not here, but it is this change that invalidated it.
+- [x] 11.8 ~~StoreKit configuration file for local testing.~~ **Done.**
+      `Budj/Budj.storekit`, referenced from the `Budj` scheme's launch action, so
+      running from Xcode loads products locally — no App Store Connect record, no
+      sandbox account, no paid-apps agreement, no money. One product,
+      `com.budj.standard.yearly` at $199, because the identifier is the join key
+      the server resolves a submitted transaction back to a plan with; a test on
+      this side alone that drifted would fail only in production. **`plans.ts`
+      still lists `starter` and `pro` and must be changed to match** — see 11.9.
+      **It needed a membership exception.** `Budj/` is a synchronised root group,
+      so the file joined the target automatically and was copied into the built
+      `.app` — shipping the store configuration in the product. It is now
+      excepted alongside `Info.plist`, and the built bundle was checked.
 
 ## 12. Bank connection
 
@@ -412,15 +464,29 @@ every state.
 - [ ] 12.3 `ConnectBankView` making no assumption that it is the first connection,
       so settings can reuse it.
 - [ ] 12.4 Inline handling of `plan_limit_exceeded` without leaving the step.
-- [ ] 12.5 Copy stating read-only access and revocability, and implying no ability
-      to move money.
+- [x] 12.5 ~~Copy stating read-only access and revocability, and implying no
+      ability to move money.~~ **Done**, and it is the real copy rather than a
+      stand-in — three lines on `ConnectBankView`, each with a symbol as well as
+      text: Budj reads accounts and transactions and asks for nothing else, it
+      cannot move money through this connection, and access can be revoked from
+      either end. The screen also says you sign in with your bank rather than
+      with us, which is the thing people actually want to know before tapping.
+      The symbols are `accessibilityHidden` — they repeat the sentence beside
+      them, and announcing both reads every row twice.
 - [ ] 12.6 Test: cancelling the session leaves the user on the bank step with no
       error that suggests they did something wrong.
 
 ## 13. Push
 
-- [ ] 13.1 Push opt-in screen after the bank step, with a skip of equal
-      prominence.
+- [x] 13.1 ~~Push opt-in screen after the bank step, with a skip of equal
+      prominence.~~ **Done, and not mocked** — push is client-only, so unlike
+      billing and bank there was no server answer to stand in for. "Not now" is a
+      `secondary` button rather than a text link, which is what "equal
+      prominence" has to mean if it is to mean anything. The screen requests
+      authorisation for real; both answers call back identically, because the
+      router only records that the offer was made and iOS will not ask twice
+      either way. Registering for remote notifications and forwarding the APNs
+      token is 13.2–13.3 and is not here.
 - [ ] 13.2 Request authorisation, register for remote notifications, and forward
       the APNs token to the server.
 - [ ] 13.3 `UIApplicationDelegateAdaptor` whose only job is receiving the token.
@@ -447,5 +513,15 @@ every state.
       server credentials and should acquire none.
 - [ ] 15.3 Read the flow's copy against the voice rules in D4: sentence case,
       second person, no emoji, no exclamation points.
+      **Partly done, and for a bigger reason than the voice rules.** The flow was
+      written for a salaried consumer — the welcome screen's own example was
+      "when your salary lands, move $200 to savings", which is the one case Budj
+      is *not* for: a fixed amount on a fixed date is already solved by a bank
+      automatic payment, for free. Budj exists because the amount and the timing
+      are unknown in advance, which a scheduled transfer cannot express and a
+      rule can. Welcome, paywall, bank and push now address somebody
+      self-employed splitting irregular income for tax and GST. Still to do: the
+      sign-in and biometric screens, and a pass at the largest type size, since
+      the new copy is longer.
 - [ ] 15.4 Run the app on an iPad simulator. `TARGETED_DEVICE_FAMILY` is `"1,2"`;
       onboarding stays single-column but must not look broken.
