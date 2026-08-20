@@ -436,6 +436,38 @@ Two server behaviours the paywall must render as distinct outcomes rather than a
 generic failure: a transaction already bound to a different account, and
 `plan_limit_exceeded` later in the flow.
 
+### D9a. One plan, one price, and the purchase path is paused
+
+**One plan at $199/year, not a tier list.** The original catalogue sold rule and
+connection counts, which describe what a plan costs to run rather than what it is
+worth — and the cheaper tier could not initiate a transfer, which does not make
+it a cheaper Budj so much as a broken one. The upstream open-banking cost is per
+user, not per rule, so tiering does not track cost either. With one plan there is
+nothing to choose, so the paywall does not ask: `PaywallModel` has no selection
+state and `PlanSummaryCard` replaced the selectable row.
+
+**Yearly rather than monthly.** The buyer is self-employed and buying a business
+tool: it is deductible, the renewal aligns with a tax year, and annual billing
+converts the flow's largest churn risk into cash up front. The price is anchored
+against an accountant ($1,500–3,000/year) and percentage-of-income services
+(~$800/year on $80k), not against consumer entertainment subscriptions — which is
+the comparison the app's own positioning has to earn, since the same number reads
+as cheap or expensive depending entirely on which list the buyer puts it in.
+
+**GST is already in `displayPrice`.** Apple is the merchant of record for New
+Zealand and collects and remits the 15% itself, and NZ consumer prices must be
+displayed inclusive — so the rule above is not just a review-rejection guard, it
+is what keeps the app compliant without doing any tax arithmetic. Commission is
+taken on the GST-exclusive amount.
+
+**11.2–11.7 are paused.** Reaching the trades needs Android, and two app stores
+means two in-app purchase systems, two receipt-verification paths, two
+notification webhooks and reconciliation between them — for 15–30% — against one
+web checkout serving both for roughly 3%. That is a decision to make before the
+purchase path is built rather than after. 11.1 and 11.8 are kept regardless: the
+price display and the local StoreKit configuration cost nothing to hold and are
+already done if App Store billing wins.
+
 ### D10. Bank connection is a hand-off, and the server's answer is the outcome
 
 The app requests an authorisation URL, presents it, and comes back. It never sees
